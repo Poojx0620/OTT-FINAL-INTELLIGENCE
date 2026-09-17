@@ -1,0 +1,52 @@
+services:
+  trainer:
+    build: ./trainer
+    volumes:
+      - ./data:/data:ro
+      - model-volume:/models
+    environment:
+      - DATA_PATH=/data/users.csv
+      - MODEL_DIR=/models
+    restart: "no"
+
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - model-volume:/models:ro
+    environment:
+      - MODEL_DIR=/models
+    depends_on:
+      trainer:
+        condition: service_completed
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  evaluator:
+    build: ./evaluator
+    volumes:
+      - model-volume:/models
+    environment:
+      - API_URL=http://api:8000
+      - METRICS_PATH=/models/metrics.json
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  model-volume:
